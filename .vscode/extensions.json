@@ -1,5 +1,4 @@
 {
-    "recommendations": [
-        "mccarter.start-git-bash"
-    ]
+  "recommendations": ["mccarter.start-git-bash"],
+  "editor.formatOnSave": true
 }
