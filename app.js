@@ -8,14 +8,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const openai = new OpenAI({
-  apiKey: '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', // defaults to process.env["OPENAI_API_KEY"]
+  apiKey: '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', // defaults to process.env["OPENAI_API_KEY"]
 });
 
 // 读取训练集文件内容
 const trainingFilePath = path.join(__dirname, './TrainingSet');
 const systemTrainingData = fs.readFileSync(`${trainingFilePath}/system.txt`, 'utf8');
 const assistantTrainingData = fs.readFileSync(`${trainingFilePath}/assistant.txt`, 'utf8');
-let sessionId;
 
 // async function main() {
 //   const response = await openai.chat.completions.create(
@@ -95,20 +94,40 @@ function chat() {
     }
   });
 }
-chat();
+// chat();
 
 import Koa from 'koa';
 import Router from 'koa-router';
 import bodyParser from 'koa-bodyparser';
+import cors from '@koa/cors';
+import helmet from 'koa-helmet';
+
 const app = new Koa();
 const router = new Router();
-const port = process.env.PORT || 3000;
+const port = 3005;
 
-app.use(bodyParser());
+// 使用 helmet 中间件来设置 CSP 头
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'*'"],
+    },
+  })
+);
+
+app.use(
+  cors({
+    origin: '*', // 允许所有来源访问
+    methods: 'GET,HEAD,PUT,POST,DELETE', // 允许的 HTTP 方法
+    credentials: true, // 允许发送和接收 cookie
+    optionsSuccessStatus: 204, // 预检请求成功的状态码
+  })
+);
+app.use(bodyParser({ enableTypes: ['json', 'text', 'form'] }));
 
 router.post('/generate-response', async (ctx) => {
-  const { messages } = ctx.request.body;
-
+  const request = ctx.request.body;
+  chatHistory.push({ role: 'user', content: request?.userInput || '' });
   try {
     const response = await openai.chat.completions.create(
       {
@@ -121,17 +140,18 @@ router.post('/generate-response', async (ctx) => {
         httpsAgent: new HttpsProxyAgent.HttpsProxyAgent('http://127.0.0.1:7890'),
       }
     );
-
+    chatHistory.push({ role: 'assistant', content: response.choices[0].message.content });
     ctx.body = { response: response.choices[0].message };
   } catch (error) {
     ctx.status = 500;
     ctx.body = { error: 'Failed to generate response' };
+    console.error('error', error);
   }
 });
 
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-// app.listen(port, () => {
-//   console.log(`Server is running on port ${port}`);
-// });
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
