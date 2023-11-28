@@ -1,20 +1,35 @@
+import HttpsProxyAgent from 'https-proxy-agent';
+import OpenAI from 'openai';
+import { apiKey } from './constant.js';
 import Koa from 'koa';
 import Router from 'koa-router';
 import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
 import helmet from 'koa-helmet';
-import serve from 'koa-static';
-import axios from 'axios';
-import { host } from './constant.js';
+import { chatPrompt } from './constant.js';
 
-// todo
-import { insertConversationData } from './MysqlConnect/index.js';
+const openai = new OpenAI({
+  apiKey,
+});
+
+export const queryOpenAi = (chatMessages) => {
+  return openai.chat.completions.create(
+    {
+      messages: chatMessages,
+      model: 'gpt-3.5-turbo-1106',
+    },
+    {
+      proxy: false,
+      httpAgent: new HttpsProxyAgent.HttpsProxyAgent('http://127.0.0.1:7890'),
+      httpsAgent: new HttpsProxyAgent.HttpsProxyAgent('http://127.0.0.1:7890'),
+    }
+  );
+};
 
 const app = new Koa();
 const router = new Router();
-const port = 3005;
+const port = 9999;
 
-app.use(serve('./public'));
 // 使用 helmet 中间件来设置 CSP 头
 app.use(
   helmet.contentSecurityPolicy({
@@ -34,22 +49,16 @@ app.use(
   })
 );
 app.use(bodyParser({ enableTypes: ['json', 'text', 'form'] }));
+const chatHistory = [...chatPrompt];
 
 // 请求响应
-router.post('/chat/generate-response', async (ctx) => {
+router.post('/openai/text', async (ctx) => {
   const request = ctx.request.body;
-  const userInput = request?.userInput;
+  chatHistory.push({ role: 'user', content: request?.userInput || '' });
   try {
-    const response = await axios.post(`http://${host}:8080/openai/text`, {
-      userInput,
-    });
-    const data = response.data;
-    const time = new Date();
-    const content = data?.data?.content;
-    if (content && userInput) {
-      insertConversationData(userInput, content, time);
-    }
-    ctx.body = data;
+    const response = await queryOpenAi(chatHistory);
+    chatHistory.push({ role: 'assistant', content: response.choices[0].message.content });
+    ctx.body = { data: response.choices[0].message };
   } catch (error) {
     ctx.status = 500;
     ctx.body = { error: 'Failed to generate response' };
